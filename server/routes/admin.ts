@@ -191,7 +191,7 @@ export const handleProducts = requireAdmin(async (_req, res) => {
   try {
     const products = await supabaseRequest<Product>("products", { query: "select=*&order=created_at.desc" });
     const variants = await supabaseRequest("product_variants", { query: "select=*" });
-    res.json(products.map((product) => ({ ...product, variants: variants.filter((variant) => variant.product_id === product.id) })));
+    res.json(products.map((product) => ({ ...product, variants: variants.filter((variant) => String(variant.product_id) === String(product.id)) })));
   } catch (error) {
     res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
   }
