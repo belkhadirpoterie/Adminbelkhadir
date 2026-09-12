@@ -3,7 +3,7 @@ import { Check, ChevronDown, Clock3, Loader2, ShoppingBag } from "lucide-react";
 import type { Order } from "@shared/api";
 import { adminApi } from "@/lib/admin-api";
 
-const statuses = ["en attente", "confirmée", "livrée", "annulée"];
+const statuses = ["en attente", "confirmée", "façonnage", "préparation couleurs", "réalisation motifs", "finitions", "prête/livraison", "livrée", "annulée"];
 const formatDate = (value?: string | null) => value ? new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "long", year: "numeric" }).format(new Date(value)) : "Date inconnue";
 const money = (value?: number | null) => typeof value === "number" ? `${value.toFixed(2).replace(".", ",")} €` : "—";
 

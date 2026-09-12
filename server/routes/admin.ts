@@ -207,15 +207,28 @@ export const handleDashboard = requireAdmin(async (_req, res) => {
       supabaseRequest<Order>("orders", { query: "select=*&order=created_at.desc&limit=8" }),
       supabaseRequest<Review>("reviews", { query: "select=*&order=created_at.desc&limit=8" }),
     ]);
+    const normalizedOrders = orders.map(normalizeOrder);
     response.products = products;
-    response.orders = orders;
+    response.orders = normalizedOrders;
     response.reviews = reviews;
-    response.notifications = orders.slice(0, 3).map((order) => ({ type: "new_order", order_id: order.id, created_at: order.created_at }));
+    response.notifications = normalizedOrders.slice(0, 3).map((order) => ({ type: "new_order", order_id: order.id, created_at: order.created_at }));
     res.json(response);
   } catch (error) {
     res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
   }
 });
+
+function normalizeOrder(row: Order): Order {
+  const firstName = row["prénom"];
+  const lastName = row.nom;
+  const customerName = row.customer_name ?? [firstName, lastName].filter(Boolean).join(" ");
+  return {
+    ...row,
+    id: String(row.id),
+    customer_name: customerName || null,
+    total: typeof row.total_price === "number" ? row.total_price : row.total,
+  };
+}
 
 async function hydrateProducts(products: Product[]) {
   const [variants, images, colors, relations, patterns] = await Promise.all([
@@ -372,7 +385,8 @@ export const handleOrders = requireAdmin(async (_req, res) => {
     return;
   }
   try {
-    res.json(await supabaseRequest("orders", { query: "select=*&order=created_at.desc" }));
+    const orders = await supabaseRequest<Order>("orders", { query: "select=*&order=created_at.desc" });
+    res.json(orders.map(normalizeOrder));
   } catch (error) {
     res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
   }
