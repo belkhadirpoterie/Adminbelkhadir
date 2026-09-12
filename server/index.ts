@@ -2,6 +2,19 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { handleDemo } from "./routes/demo";
+import {
+  handleDashboard,
+  handleLogin,
+  handleLogout,
+  handleOrderStatus,
+  handleOrders,
+  handleProductDelete,
+  handleProductUpdate,
+  handleProducts,
+  handleReviewModeration,
+  handleReviews,
+  handleSession,
+} from "./routes/admin";
 
 export function createServer() {
   const app = express();
@@ -18,6 +31,17 @@ export function createServer() {
   });
 
   app.get("/api/demo", handleDemo);
+  app.post("/api/admin/login", handleLogin);
+  app.post("/api/admin/logout", handleLogout);
+  app.get("/api/admin/session", handleSession);
+  app.get("/api/admin/dashboard", handleDashboard);
+  app.get("/api/admin/products", handleProducts);
+  app.patch("/api/admin/products/:id", handleProductUpdate);
+  app.delete("/api/admin/products/:id", handleProductDelete);
+  app.get("/api/admin/orders", handleOrders);
+  app.patch("/api/admin/orders/:id/status", handleOrderStatus);
+  app.get("/api/admin/reviews", handleReviews);
+  app.patch("/api/admin/reviews/:id", handleReviewModeration);
 
   return app;
 }

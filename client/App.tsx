@@ -1,30 +1,41 @@
 import "./global.css";
 
+import { useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import { createRoot } from "react-dom/client";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
+import AdminLayout from "@/components/AdminLayout";
+import { adminApi } from "@/lib/admin-api";
+import Dashboard from "@/pages/Dashboard";
+import Login from "@/pages/Login";
+import NotFound from "@/pages/NotFound";
+import Orders from "@/pages/Orders";
+import Products from "@/pages/Products";
+import Reviews from "@/pages/Reviews";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior }), [pathname]);
+  return null;
+}
 
-createRoot(document.getElementById("root")!).render(<App />);
+function ProtectedRoutes() {
+  const navigate = useNavigate();
+  const [checked, setChecked] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  useEffect(() => { adminApi.session().then((session) => { setAuthenticated(session.authenticated); if (!session.authenticated) navigate("/login", { replace: true }); }).catch(() => navigate("/login", { replace: true })).finally(() => setChecked(true)); }, [navigate]);
+  if (!checked) return <div className="flex min-h-screen items-center justify-center bg-[#f5f2eb] text-sm text-[#6f8176]">Vérification de la session…</div>;
+  return authenticated ? <AdminLayout /> : null;
+}
+
+function AppRoutes() {
+  return <><ScrollToTop /><Routes><Route path="/login" element={<Login />} /><Route element={<ProtectedRoutes />}><Route path="/dashboard" element={<Dashboard />} /><Route path="/produits" element={<Products />} /><Route path="/commandes" element={<Orders />} /><Route path="/avis" element={<Reviews />} /></Route><Route path="/" element={<Navigate to="/dashboard" replace />} /><Route path="*" element={<NotFound />} /></Routes></>;
+}
+
+export default function App() {
+  return <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter><AppRoutes /></BrowserRouter></TooltipProvider></QueryClientProvider>;
+}

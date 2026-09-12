@@ -7,13 +7,28 @@ export default {
   theme: {
     container: {
       center: true,
-      padding: "2rem",
+      padding: "1.25rem",
       screens: {
         "2xl": "1400px",
       },
     },
     extend: {
+      fontFamily: {
+        sans: ["DM Sans", "sans-serif"],
+        serif: ["Playfair Display", "Georgia", "serif"],
+      },
+      boxShadow: {
+        soft: "0 8px 24px rgba(42, 67, 52, 0.04)",
+      },
       colors: {
+        atelier: {
+          cream: "#f5f2eb",
+          paper: "#fbfcf9",
+          royal: "#16543e",
+          ink: "#18352b",
+          gold: "#a17745",
+          sage: "#e5f0e7",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
