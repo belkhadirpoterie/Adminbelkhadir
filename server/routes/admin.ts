@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { RequestHandler } from "express";
+import type { Request, RequestHandler, Response } from "express";
 import type {
   AdminDashboardResponse,
   AdminSessionResponse,
@@ -102,11 +102,14 @@ async function supabaseRequest<T extends SupabaseRow = SupabaseRow>(
   return (await response.json()) as T[];
 }
 
-function setSessionCookie(res: Parameters<RequestHandler>[1], token: string) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+function setSessionCookie(req: Request, res: Response, token: string) {
+  const forwardedProtocol = req.headers["x-forwarded-proto"];
+  const isHttps = req.protocol === "https" || forwardedProtocol === "https" || process.env.NODE_ENV === "production";
+  const secure = isHttps ? "; Secure" : "";
+  const sameSite = isHttps ? "None" : "Lax";
   res.setHeader(
     "Set-Cookie",
-    `${SESSION_COOKIE}=${token}; Max-Age=${SESSION_MAX_AGE}; Path=/; HttpOnly; SameSite=Lax${secure}`,
+    `${SESSION_COOKIE}=${token}; Max-Age=${SESSION_MAX_AGE}; Path=/; HttpOnly; SameSite=${sameSite}${secure}`,
   );
 }
 
@@ -120,12 +123,14 @@ export const handleLogin: RequestHandler = (req, res) => {
     return;
   }
 
-  setSessionCookie(res, createSession(username));
+  setSessionCookie(req, res, createSession(username));
   res.json({ authenticated: true, username });
 };
 
-export const handleLogout: RequestHandler = (_req, res) => {
-  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax`);
+export const handleLogout: RequestHandler = (req, res) => {
+  const forwardedProtocol = req.headers["x-forwarded-proto"];
+  const isHttps = req.protocol === "https" || forwardedProtocol === "https" || process.env.NODE_ENV === "production";
+  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=${isHttps ? "None" : "Lax"}${isHttps ? "; Secure" : ""}`);
   res.json({ authenticated: false });
 };
 

@@ -11,6 +11,7 @@ import type {
 async function request<T>(path: string, options?: RequestInit) {
   const response = await fetch(path, {
     ...options,
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) },
   });
   const data = await response.json().catch(() => ({}));
