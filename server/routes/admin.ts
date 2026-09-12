@@ -1,18 +1,21 @@
 import crypto from "node:crypto";
 import type { Request, RequestHandler, Response } from "express";
+import { sendOrderStatusEmail } from "./order-email";
 import type {
   AdminDashboardResponse,
   AdminSessionResponse,
   LoginPayload,
   Order,
   Product,
+  ProductCreatePayload,
+  ProductPattern,
   ProductMutationPayload,
   Review,
 } from "@shared/api";
 
 const SESSION_COOKIE = "atelier_admin_session";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
-const allowedOrderStatuses = ["en attente", "confirmée", "livrée", "annulée"];
+const allowedOrderStatuses = ["en attente", "confirmée", "façonnage", "préparation couleurs", "réalisation motifs", "finitions", "prête/livraison", "livrée", "annulée"];
 
 type SupabaseRow = Record<string, unknown>;
 
@@ -111,6 +114,37 @@ async function supabaseRequest<T extends SupabaseRow = SupabaseRow>(
   return (await response.json()) as T[];
 }
 
+async function optionalSupabaseRequest<T extends SupabaseRow = SupabaseRow>(table: string, options: { method?: string; query?: string; body?: unknown } = {}) {
+  try {
+    return await supabaseRequest<T>(table, options);
+  } catch {
+    return [] as T[];
+  }
+}
+
+async function uploadImage(data: string, fileName: string, folder: string) {
+  const match = data.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) throw new Error("Format d'image invalide");
+  const [, contentType, encoded] = match;
+  const buffer = Buffer.from(encoded, "base64");
+  if (buffer.byteLength > 8 * 1024 * 1024) throw new Error("Image trop volumineuse (8 Mo maximum)");
+  const bucket = "atelier-products";
+  const storageHeaders = { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, "Content-Type": "application/json" };
+  const bucketResponse = await fetch(`${process.env.SUPABASE_URL}/storage/v1/bucket`, { method: "POST", headers: storageHeaders, body: JSON.stringify({ id: bucket, name: bucket, public: true }) });
+  if (!bucketResponse.ok && bucketResponse.status !== 409) throw new Error("Le bucket de stockage Supabase est indisponible");
+  const extension = fileName.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || contentType.split("/")[1].replace(/[^a-z0-9]/gi, "");
+  const path = `${folder}/${crypto.randomUUID()}.${extension}`;
+  const uploadResponse = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, { method: "POST", headers: { Authorization: storageHeaders.Authorization, apikey: storageHeaders.apikey, "Content-Type": contentType, "x-upsert": "false" }, body: buffer });
+  if (!uploadResponse.ok) throw new Error("Le téléversement de l'image a échoué");
+  return `${process.env.SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+}
+
+async function resolveImage(image: { image_url?: string; data?: string; file_name?: string }, folder: string) {
+  if (image.data) return uploadImage(image.data, image.file_name ?? "image", folder);
+  if (image.image_url) return image.image_url;
+  throw new Error("Image manquante");
+}
+
 function setSessionCookie(req: Request, res: Response, token: string) {
   const forwardedProtocol = req.headers["x-forwarded-proto"];
   const isHttps = req.protocol === "https" || forwardedProtocol === "https" || process.env.NODE_ENV === "production";
@@ -183,6 +217,27 @@ export const handleDashboard = requireAdmin(async (_req, res) => {
   }
 });
 
+async function hydrateProducts(products: Product[]) {
+  const [variants, images, colors, relations, patterns] = await Promise.all([
+    optionalSupabaseRequest("product_variants", { query: "select=*" }),
+    optionalSupabaseRequest("product_images", { query: "select=*&order=position.asc" }),
+    optionalSupabaseRequest("product_available_colors", { query: "select=*" }),
+    optionalSupabaseRequest("product_available_patterns", { query: "select=*" }),
+    optionalSupabaseRequest<ProductPattern>("product_patterns", { query: "select=*" }),
+  ]);
+  return products.map((product) => {
+    const productRelations = relations.filter((relation) => String(relation.product_id) === String(product.id));
+    const patternIds = productRelations.map((relation) => String(relation.pattern_id));
+    return {
+      ...product,
+      variants: variants.filter((variant) => String(variant.product_id) === String(product.id)),
+      images: images.filter((image) => String(image.product_id) === String(product.id)),
+      colors: colors.filter((color) => String(color.product_id) === String(product.id)).map((color) => String(color.color)),
+      patterns: patterns.filter((pattern) => patternIds.includes(String(pattern.id))),
+    };
+  });
+}
+
 export const handleProducts = requireAdmin(async (_req, res) => {
   if (!isConfigured()) {
     res.json([]);
@@ -190,8 +245,69 @@ export const handleProducts = requireAdmin(async (_req, res) => {
   }
   try {
     const products = await supabaseRequest<Product>("products", { query: "select=*&order=created_at.desc" });
-    const variants = await supabaseRequest("product_variants", { query: "select=*" });
-    res.json(products.map((product) => ({ ...product, variants: variants.filter((variant) => String(variant.product_id) === String(product.id)) })));
+    res.json(await hydrateProducts(products));
+  } catch (error) {
+    res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
+  }
+});
+
+export const handleProductDetail = requireAdmin(async (req, res) => {
+  if (!isConfigured()) {
+    res.status(503).json({ message: "Supabase n'est pas configuré" });
+    return;
+  }
+  try {
+    const products = await supabaseRequest<Product>(`products?id=eq.${encodeURIComponent(String(req.params.id))}&limit=1`);
+    if (!products[0]) {
+      res.status(404).json({ message: "Produit introuvable" });
+      return;
+    }
+    res.json((await hydrateProducts(products))[0]);
+  } catch (error) {
+    res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
+  }
+});
+
+export const handleProductCreate = requireAdmin(async (req, res) => {
+  if (!isConfigured()) {
+    res.status(503).json({ message: "Supabase n'est pas configuré" });
+    return;
+  }
+  const body = req.body as ProductCreatePayload;
+  if (!body.name?.trim()) {
+    res.status(400).json({ message: "Le nom du produit est requis" });
+    return;
+  }
+  try {
+    await supabaseRequest("product_images", { query: "select=id&limit=0" });
+    await supabaseRequest("product_available_colors", { query: "select=product_id&limit=0" });
+    const images = await Promise.all((body.images ?? []).map((image) => resolveImage(image, "gallery")));
+    const patternsWithImages = await Promise.all((body.patterns ?? []).map(async (pattern) => ({
+      id: pattern.id ?? crypto.randomUUID(),
+      name: pattern.name,
+      thumbnail_url: pattern.data ? await uploadImage(pattern.data, pattern.file_name ?? "pattern", "patterns") : pattern.thumbnail_url ?? null,
+      description: pattern.description ?? null,
+    })));
+    const productRows = await supabaseRequest<Product>("products", {
+      method: "POST",
+      body: {
+        name: body.name.trim(),
+        description: body.description ?? "",
+        base_price: body.base_price ?? 0,
+        category: body.category ?? null,
+        image_url: images[0] ?? null,
+      },
+    });
+    const product = productRows[0];
+    if (!product) throw new Error("Produit non créé");
+    if (body.variants?.length) await supabaseRequest("product_variants", { method: "POST", body: body.variants.map((variant) => ({ product_id: product.id, size_label: variant.size_label, dimensions: variant.dimensions ?? null, price: variant.price })) });
+    if (images.length) await supabaseRequest("product_images", { method: "POST", body: images.map((image_url, position) => ({ product_id: product.id, image_url, position })) });
+    if (body.colors?.length) await supabaseRequest("product_available_colors", { method: "POST", body: body.colors.map((color) => ({ product_id: product.id, color })) });
+    if (patternsWithImages.length) {
+      const patterns = await supabaseRequest<ProductPattern>("product_patterns", { method: "POST", body: patternsWithImages });
+      await supabaseRequest("product_available_patterns", { method: "POST", body: patterns.map((pattern) => ({ product_id: product.id, pattern_id: pattern.id })) });
+    }
+    res.status(201).json((await hydrateProducts([product]))[0]);
   } catch (error) {
     res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
   }
@@ -204,16 +320,29 @@ export const handleProductUpdate = requireAdmin(async (req, res) => {
   }
   const body = req.body as ProductMutationPayload;
   const product: Record<string, unknown> = {};
-  for (const key of ["name", "description", "price", "stock", "colors", "patterns"]) {
+  for (const key of ["name", "description", "base_price", "image_url"]) {
     if (body[key as keyof ProductMutationPayload] !== undefined) product[key] = body[key as keyof ProductMutationPayload];
   }
+  if (body.price !== undefined) product.base_price = body.price;
   try {
-    const result = await supabaseRequest(`products?id=eq.${encodeURIComponent(String(req.params.id))}`, { method: "PATCH", body: product });
+    const result = await supabaseRequest<Product>(`products?id=eq.${encodeURIComponent(String(req.params.id))}`, { method: "PATCH", body: product });
     if (body.variants) {
       await supabaseRequest(`product_variants?product_id=eq.${encodeURIComponent(String(req.params.id))}`, { method: "DELETE" });
-      if (body.variants.length) await supabaseRequest("product_variants", { method: "POST", body: body.variants.map((variant) => ({ ...variant, product_id: String(req.params.id) })) });
+      if (body.variants.length) await supabaseRequest("product_variants", { method: "POST", body: body.variants.map((variant) => ({ product_id: String(req.params.id), size_label: variant.size_label ?? variant.size ?? "", dimensions: variant.dimensions ?? null, price: variant.price ?? 0 })) });
     }
-    res.json(result[0] ?? {});
+    if (body.images) {
+      await supabaseRequest(`product_images?product_id=eq.${encodeURIComponent(String(req.params.id))}`, { method: "DELETE" });
+      if (body.images.length) await supabaseRequest("product_images", { method: "POST", body: body.images.map((image, position) => ({ product_id: String(req.params.id), image_url: image.image_url, position: image.position ?? position })) });
+    }
+    if (body.colors) {
+      await supabaseRequest(`product_available_colors?product_id=eq.${encodeURIComponent(String(req.params.id))}`, { method: "DELETE" });
+      if (body.colors.length) await supabaseRequest("product_available_colors", { method: "POST", body: body.colors.map((color) => ({ product_id: String(req.params.id), color })) });
+    }
+    if (body.patterns) {
+      await supabaseRequest(`product_available_patterns?product_id=eq.${encodeURIComponent(String(req.params.id))}`, { method: "DELETE" });
+      if (body.patterns.length) await supabaseRequest("product_available_patterns", { method: "POST", body: body.patterns.map((pattern) => ({ product_id: String(req.params.id), pattern_id: pattern })) });
+    }
+    res.json((await hydrateProducts(result[0] ? [result[0]] : []))[0] ?? {});
   } catch (error) {
     res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
   }
@@ -225,7 +354,12 @@ export const handleProductDelete = requireAdmin(async (req, res) => {
     return;
   }
   try {
-    await supabaseRequest(`products?id=eq.${encodeURIComponent(String(req.params.id))}`, { method: "DELETE" });
+    const productId = encodeURIComponent(String(req.params.id));
+    await supabaseRequest(`product_available_patterns?product_id=eq.${productId}`, { method: "DELETE" });
+    await supabaseRequest(`product_variants?product_id=eq.${productId}`, { method: "DELETE" });
+    await supabaseRequest(`product_images?product_id=eq.${productId}`, { method: "DELETE" });
+    await supabaseRequest(`product_available_colors?product_id=eq.${productId}`, { method: "DELETE" });
+    await supabaseRequest(`products?id=eq.${productId}`, { method: "DELETE" });
     res.json({ deleted: true });
   } catch (error) {
     res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
@@ -259,7 +393,13 @@ export const handleOrderStatus = requireAdmin(async (req, res) => {
       method: "PATCH",
       body: { status },
     });
-    res.json(result[0] ?? {});
+    let email = { sent: false, skipped: true };
+    try {
+      email = await sendOrderStatusEmail(String(req.params.id), status);
+    } catch (emailError) {
+      console.error("Order status email failed", emailError);
+    }
+    res.json({ ...(result[0] ?? {}), email });
   } catch (error) {
     res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
   }

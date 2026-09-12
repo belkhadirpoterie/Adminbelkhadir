@@ -8,7 +8,9 @@ import {
   handleLogout,
   handleOrderStatus,
   handleOrders,
+  handleProductCreate,
   handleProductDelete,
+  handleProductDetail,
   handleProductUpdate,
   handleProducts,
   handleReviewModeration,
@@ -21,8 +23,8 @@ export function createServer() {
 
   // Middleware
   app.use(cors());
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: "12mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "12mb" }));
 
   // Example API routes
   app.get("/api/ping", (_req, res) => {
@@ -36,6 +38,8 @@ export function createServer() {
   app.get("/api/admin/session", handleSession);
   app.get("/api/admin/dashboard", handleDashboard);
   app.get("/api/admin/products", handleProducts);
+  app.post("/api/admin/products", handleProductCreate);
+  app.get("/api/admin/products/:id", handleProductDetail);
   app.patch("/api/admin/products/:id", handleProductUpdate);
   app.delete("/api/admin/products/:id", handleProductDelete);
   app.get("/api/admin/orders", handleOrders);

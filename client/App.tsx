@@ -9,8 +9,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AdminLayout from "@/components/AdminLayout";
 import { adminApi } from "@/lib/admin-api";
+import AddProduct from "@/pages/AddProduct";
 import Dashboard from "@/pages/Dashboard";
 import Login from "@/pages/Login";
+import ProductDetail from "@/pages/ProductDetail";
 import NotFound from "@/pages/NotFound";
 import Orders from "@/pages/Orders";
 import Products from "@/pages/Products";
@@ -36,7 +38,7 @@ function ProtectedRoutes() {
 }
 
 function AppRoutes() {
-  return <><ScrollToTop /><Routes><Route path="/login" element={<Login />} /><Route element={<ProtectedRoutes />}><Route path="/dashboard" element={<Dashboard />} /><Route path="/produits" element={<Products />} /><Route path="/commandes" element={<Orders />} /><Route path="/avis" element={<Reviews />} /></Route><Route path="/" element={<Navigate to="/dashboard" replace />} /><Route path="*" element={<NotFound />} /></Routes></>;
+  return <><ScrollToTop /><Routes><Route path="/login" element={<Login />} /><Route element={<ProtectedRoutes />}><Route path="/dashboard" element={<Dashboard />} /><Route path="/produits" element={<Products />} /><Route path="/produits/nouveau" element={<AddProduct />} /><Route path="/produits/:id" element={<ProductDetail />} /><Route path="/commandes" element={<Orders />} /><Route path="/avis" element={<Reviews />} /></Route><Route path="/" element={<Navigate to="/dashboard" replace />} /><Route path="*" element={<NotFound />} /></Routes></>;
 }
 
 export default function App() {
