@@ -1,5 +1,6 @@
 import "./global.css";
 
+import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -39,3 +40,5 @@ function AppRoutes() {
 export default function App() {
   return <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter><AppRoutes /></BrowserRouter></TooltipProvider></QueryClientProvider>;
 }
+
+createRoot(document.getElementById("root")!).render(<App />);

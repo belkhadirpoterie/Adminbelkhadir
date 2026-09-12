@@ -4,7 +4,10 @@ import type {
   AdminDashboardResponse,
   AdminSessionResponse,
   LoginPayload,
+  Order,
+  Product,
   ProductMutationPayload,
+  Review,
 } from "@shared/api";
 
 const SESSION_COOKIE = "atelier_admin_session";
@@ -72,11 +75,11 @@ function requireAdmin(handler: RequestHandler): RequestHandler {
   };
 }
 
-async function supabaseRequest(
+async function supabaseRequest<T extends SupabaseRow = SupabaseRow>(
   table: string,
   options: { method?: string; query?: string; body?: unknown } = {},
 ) {
-  if (!isConfigured()) return [] as SupabaseRow[];
+  if (!isConfigured()) return [] as T[];
   const url = new URL(`${process.env.SUPABASE_URL}/rest/v1/${table}`);
   if (options.query) new URLSearchParams(options.query).forEach((value, key) => url.searchParams.set(key, value));
 
@@ -95,8 +98,8 @@ async function supabaseRequest(
     const message = await response.text();
     throw new Error(`Supabase ${response.status}: ${message}`);
   }
-  if (response.status === 204) return [] as SupabaseRow[];
-  return (await response.json()) as SupabaseRow[];
+  if (response.status === 204) return [] as T[];
+  return (await response.json()) as T[];
 }
 
 function setSessionCookie(res: Parameters<RequestHandler>[1], token: string) {
@@ -151,13 +154,14 @@ export const handleDashboard = requireAdmin(async (_req, res) => {
 
   try {
     const [products, orders, reviews] = await Promise.all([
-      supabaseRequest("products", { query: "select=*&order=created_at.desc&limit=8" }),
-      supabaseRequest("orders", { query: "select=*&order=created_at.desc&limit=8" }),
-      supabaseRequest("reviews", { query: "select=*&order=created_at.desc&limit=8" }),
+      supabaseRequest<Product>("products", { query: "select=*&order=created_at.desc&limit=8" }),
+      supabaseRequest<Order>("orders", { query: "select=*&order=created_at.desc&limit=8" }),
+      supabaseRequest<Review>("reviews", { query: "select=*&order=created_at.desc&limit=8" }),
     ]);
     response.products = products;
     response.orders = orders;
     response.reviews = reviews;
+    response.notifications = orders.slice(0, 3).map((order) => ({ type: "new_order", order_id: order.id, created_at: order.created_at }));
     res.json(response);
   } catch (error) {
     res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
@@ -170,7 +174,9 @@ export const handleProducts = requireAdmin(async (_req, res) => {
     return;
   }
   try {
-    res.json(await supabaseRequest("products", { query: "select=*&order=created_at.desc" }));
+    const products = await supabaseRequest<Product>("products", { query: "select=*&order=created_at.desc" });
+    const variants = await supabaseRequest("product_variants", { query: "select=*" });
+    res.json(products.map((product) => ({ ...product, variants: variants.filter((variant) => variant.product_id === product.id) })));
   } catch (error) {
     res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
   }
@@ -187,10 +193,10 @@ export const handleProductUpdate = requireAdmin(async (req, res) => {
     if (body[key as keyof ProductMutationPayload] !== undefined) product[key] = body[key as keyof ProductMutationPayload];
   }
   try {
-    const result = await supabaseRequest(`products?id=eq.${encodeURIComponent(req.params.id)}`, { method: "PATCH", body: product });
+    const result = await supabaseRequest(`products?id=eq.${encodeURIComponent(String(req.params.id))}`, { method: "PATCH", body: product });
     if (body.variants) {
-      await supabaseRequest(`product_variants?product_id=eq.${encodeURIComponent(req.params.id)}`, { method: "DELETE" });
-      if (body.variants.length) await supabaseRequest("product_variants", { method: "POST", body: body.variants.map((variant) => ({ ...variant, product_id: req.params.id })) });
+      await supabaseRequest(`product_variants?product_id=eq.${encodeURIComponent(String(req.params.id))}`, { method: "DELETE" });
+      if (body.variants.length) await supabaseRequest("product_variants", { method: "POST", body: body.variants.map((variant) => ({ ...variant, product_id: String(req.params.id) })) });
     }
     res.json(result[0] ?? {});
   } catch (error) {
@@ -204,7 +210,7 @@ export const handleProductDelete = requireAdmin(async (req, res) => {
     return;
   }
   try {
-    await supabaseRequest(`products?id=eq.${encodeURIComponent(req.params.id)}`, { method: "DELETE" });
+    await supabaseRequest(`products?id=eq.${encodeURIComponent(String(req.params.id))}`, { method: "DELETE" });
     res.json({ deleted: true });
   } catch (error) {
     res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
@@ -234,7 +240,7 @@ export const handleOrderStatus = requireAdmin(async (req, res) => {
     return;
   }
   try {
-    const result = await supabaseRequest(`orders?id=eq.${encodeURIComponent(req.params.id)}`, {
+    const result = await supabaseRequest(`orders?id=eq.${encodeURIComponent(String(req.params.id))}`, {
       method: "PATCH",
       body: { status },
     });
@@ -264,7 +270,7 @@ export const handleReviewModeration = requireAdmin(async (req, res) => {
   const { action } = req.body as { action?: "approve" | "reject" | "delete" };
   try {
     if (action === "delete") {
-      await supabaseRequest(`reviews?id=eq.${encodeURIComponent(req.params.id)}`, { method: "DELETE" });
+      await supabaseRequest(`reviews?id=eq.${encodeURIComponent(String(req.params.id))}`, { method: "DELETE" });
       res.json({ deleted: true });
       return;
     }
@@ -272,7 +278,7 @@ export const handleReviewModeration = requireAdmin(async (req, res) => {
       res.status(400).json({ message: "Action de modération invalide" });
       return;
     }
-    const result = await supabaseRequest(`reviews?id=eq.${encodeURIComponent(req.params.id)}`, {
+    const result = await supabaseRequest(`reviews?id=eq.${encodeURIComponent(String(req.params.id))}`, {
       method: "PATCH",
       body: { is_approved: action === "approve" },
     });
