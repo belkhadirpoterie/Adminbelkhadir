@@ -39,15 +39,8 @@ function createSession(username: string) {
   return `${encode(payload)}.${signature}`;
 }
 
-function authenticatedUsername(req: { headers: { cookie?: string } }) {
-  const cookie = req.headers.cookie
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${SESSION_COOKIE}=`));
-  if (!cookie) return null;
-
-  const value = cookie.slice(`${SESSION_COOKIE}=`.length);
-  const [encodedPayload, signature] = value.split(".");
+function usernameFromToken(token: string) {
+  const [encodedPayload, signature] = token.split(".");
   if (!encodedPayload || !signature) return null;
 
   try {
@@ -63,6 +56,22 @@ function authenticatedUsername(req: { headers: { cookie?: string } }) {
   } catch {
     return null;
   }
+}
+
+function sessionTokenFromRequest(req: Request) {
+  const authorization = req.headers.authorization;
+  if (authorization?.startsWith("Bearer ")) return authorization.slice("Bearer ".length);
+
+  const cookie = req.headers.cookie
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${SESSION_COOKIE}=`));
+  return cookie?.slice(`${SESSION_COOKIE}=`.length) ?? null;
+}
+
+function authenticatedUsername(req: Request) {
+  const token = sessionTokenFromRequest(req);
+  return token ? usernameFromToken(token) : null;
 }
 
 function requireAdmin(handler: RequestHandler): RequestHandler {
@@ -123,8 +132,9 @@ export const handleLogin: RequestHandler = (req, res) => {
     return;
   }
 
-  setSessionCookie(req, res, createSession(username));
-  res.json({ authenticated: true, username });
+  const token = createSession(username);
+  setSessionCookie(req, res, token);
+  res.json({ authenticated: true, username, token });
 };
 
 export const handleLogout: RequestHandler = (req, res) => {

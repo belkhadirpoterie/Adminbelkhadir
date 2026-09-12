@@ -54,6 +54,7 @@ export interface AdminDashboardResponse {
 export interface AdminSessionResponse {
   authenticated: boolean;
   username?: string;
+  token?: string;
 }
 
 export interface ProductMutationPayload {

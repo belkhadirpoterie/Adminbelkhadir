@@ -8,11 +8,18 @@ import type {
   Review,
 } from "@shared/api";
 
+const sessionToken = () => typeof window === "undefined" ? null : window.localStorage.getItem("atelier_admin_session");
+
 async function request<T>(path: string, options?: RequestInit) {
+  const token = sessionToken();
   const response = await fetch(path, {
     ...options,
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options?.headers ?? {}),
+    },
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.message ?? "Une erreur est survenue");
@@ -21,8 +28,16 @@ async function request<T>(path: string, options?: RequestInit) {
 
 export const adminApi = {
   session: () => request<AdminSessionResponse>("/api/admin/session"),
-  login: (payload: LoginPayload) => request<AdminSessionResponse>("/api/admin/login", { method: "POST", body: JSON.stringify(payload) }),
-  logout: () => request<AdminSessionResponse>("/api/admin/logout", { method: "POST" }),
+  login: async (payload: LoginPayload) => {
+    const response = await request<AdminSessionResponse>("/api/admin/login", { method: "POST", body: JSON.stringify(payload) });
+    if (response.token) window.localStorage.setItem("atelier_admin_session", response.token);
+    return response;
+  },
+  logout: async () => {
+    const response = await request<AdminSessionResponse>("/api/admin/logout", { method: "POST" });
+    window.localStorage.removeItem("atelier_admin_session");
+    return response;
+  },
   dashboard: () => request<AdminDashboardResponse>("/api/admin/dashboard"),
   products: () => request<Product[]>("/api/admin/products"),
   updateProduct: (id: string, payload: ProductMutationPayload) => request<Product>(`/api/admin/products/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
