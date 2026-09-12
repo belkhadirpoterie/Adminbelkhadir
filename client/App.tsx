@@ -1,6 +1,6 @@
 import "./global.css";
 
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -20,7 +20,9 @@ const queryClient = new QueryClient();
 
 function ScrollToTop() {
   const { pathname } = useLocation();
-  useEffect(() => window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior }), [pathname]);
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+  }, [pathname]);
   return null;
 }
 
@@ -38,7 +40,10 @@ function AppRoutes() {
 }
 
 export default function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter><AppRoutes /></BrowserRouter></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AppRoutes /></BrowserRouter></TooltipProvider></QueryClientProvider>;
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+const container = document.getElementById("root") as HTMLElement & { __atelierRoot?: Root };
+const root = container.__atelierRoot ?? createRoot(container);
+container.__atelierRoot = root;
+root.render(<App />);
