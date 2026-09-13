@@ -30,6 +30,7 @@ export interface Product {
   image_url?: string | null;
   colors?: string[];
   patterns?: ProductPattern[];
+  pattern_catalog?: ProductPattern[];
   images?: ProductImage[];
   variants?: ProductVariant[];
   [key: string]: unknown;

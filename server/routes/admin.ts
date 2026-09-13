@@ -245,6 +245,7 @@ async function hydrateProducts(products: Product[]) {
       images: images.filter((image) => String(image.product_id) === String(product.id)),
       colors: colors.filter((color) => String(color.product_id) === String(product.id)).map((color) => String(color.color)),
       patterns: patterns.filter((pattern) => patternIds.includes(String(pattern.id))),
+      pattern_catalog: patterns,
     };
   });
 }
