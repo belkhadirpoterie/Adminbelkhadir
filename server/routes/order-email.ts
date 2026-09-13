@@ -19,6 +19,12 @@ function configured() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.SMTP_USER && process.env.SMTP_PASSWORD && process.env.SMTP_FROM_EMAIL);
 }
 
+export type OrderEmailResult = {
+  sent: boolean;
+  skipped: boolean;
+  reason?: "smtp_not_configured" | "recipient_missing";
+};
+
 function escapeHtml(value: unknown) {
   return String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
 }
@@ -35,14 +41,14 @@ function orderItems(order: Row) {
   return Array.isArray(order.articles) ? order.articles as Array<{ product_id?: string | number; variant_id?: string | number; quantity?: number; price?: number }> : [];
 }
 
-export async function sendOrderStatusEmail(orderId: string | number, status: string) {
-  if (!configured()) return { sent: false, skipped: true };
+export async function sendOrderStatusEmail(orderId: string | number, status: string): Promise<OrderEmailResult> {
+  if (!configured()) return { sent: false, skipped: true, reason: "smtp_not_configured" };
   const orders = await supabaseRows("orders", `select=*&id=eq.${encodeURIComponent(String(orderId))}&limit=1`);
   const order = orders[0] as (Order & Row) | undefined;
-  if (!order?.user_id) return { sent: false, skipped: true };
+  if (!order?.user_id) return { sent: false, skipped: true, reason: "recipient_missing" };
   const profiles = await supabaseRows("profiles", `select=*&id=eq.${encodeURIComponent(String(order.user_id))}&limit=1`);
   const profile = profiles[0];
-  if (!profile?.email) return { sent: false, skipped: true };
+  if (typeof profile?.email !== "string" || !profile.email.trim()) return { sent: false, skipped: true, reason: "recipient_missing" };
   const items = orderItems(order);
   const products = await supabaseRows("products", "select=id,name");
   const productNames = new Map(products.map((product) => [String(product.id), String(product.name ?? "Article")]))
