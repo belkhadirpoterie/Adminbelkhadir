@@ -9,6 +9,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AdminLayout from "@/components/AdminLayout";
 import { adminApi } from "@/lib/admin-api";
+import { initNetworkListener, isOnline } from "@/lib/syncManager";
+import { getAuthToken } from "@/lib/sessionStore";
 import AddProduct from "@/pages/AddProduct";
 import Dashboard from "@/pages/Dashboard";
 import Login from "@/pages/Login";
@@ -32,7 +34,7 @@ function ProtectedRoutes() {
   const navigate = useNavigate();
   const [checked, setChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
-  useEffect(() => { adminApi.session().then((session) => { setAuthenticated(session.authenticated); if (!session.authenticated) navigate("/login", { replace: true }); }).catch(() => navigate("/login", { replace: true })).finally(() => setChecked(true)); }, [navigate]);
+  useEffect(() => { adminApi.session().then((session) => { setAuthenticated(session.authenticated); if (!session.authenticated) navigate("/login", { replace: true }); }).catch(async () => { const offline = await isOnline().then((online) => !online).catch(() => false); const token = offline ? await getAuthToken() : null; if (token) setAuthenticated(true); else navigate("/login", { replace: true }); }).finally(() => setChecked(true)); }, [navigate]);
   if (!checked) return <div className="flex min-h-screen items-center justify-center bg-[#f5f2eb] text-sm text-[#6f8176]">Vérification de la session…</div>;
   return authenticated ? <AdminLayout /> : null;
 }
@@ -42,6 +44,10 @@ function AppRoutes() {
 }
 
 export default function App() {
+  useEffect(() => {
+    void initNetworkListener();
+  }, []);
+
   return <QueryClientProvider client={queryClient}><TooltipProvider><Toaster /><Sonner /><BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AppRoutes /></BrowserRouter></TooltipProvider></QueryClientProvider>;
 }
 

@@ -20,8 +20,11 @@ export default function AdminLayout() {
   const current = navigation.find((item) => location.pathname.startsWith(item.to)) ?? navigation[0];
 
   const logout = async () => {
-    await adminApi.logout();
-    navigate("/login", { replace: true });
+    try {
+      await adminApi.logout();
+    } finally {
+      navigate("/login", { replace: true });
+    }
   };
 
   return (

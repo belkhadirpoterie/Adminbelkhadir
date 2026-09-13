@@ -40,7 +40,7 @@ export default function ProductDetail() {
     try {
       const updated = await adminApi.updateProduct(product.id, payload);
       setProduct((current) => current ? { ...current, ...updated } : current);
-      setMessage(success);
+      setMessage((updated as Product & { pendingSync?: boolean }).pendingSync ? "Modification enregistrée hors connexion. Synchronisation en attente du retour réseau." : success);
       setPanel(null);
     } catch (value) {
       setError(value instanceof Error ? value.message : "Enregistrement impossible");

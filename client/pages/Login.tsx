@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { adminApi } from "@/lib/admin-api";
+import { getAuthToken } from "@/lib/sessionStore";
+import { isOnline } from "@/lib/syncManager";
 
 const logoUrl = "https://cdn.builder.io/api/v1/image/assets%2F259ab2667a974c67a650391d391d4bc2%2Fea5ba6ab6ee24b74ab64bbbf48c835d5?format=webp&width=800&height=1200";
 
@@ -16,7 +18,10 @@ export default function Login() {
   useEffect(() => {
     adminApi.session().then((session) => {
       if (session.authenticated) navigate("/dashboard", { replace: true });
-    }).catch(() => undefined);
+    }).catch(async () => {
+      const offline = await isOnline().then((online) => !online).catch(() => false);
+      if (offline && await getAuthToken()) navigate("/dashboard", { replace: true });
+    });
   }, [navigate]);
 
   const submit = async (event: FormEvent) => {

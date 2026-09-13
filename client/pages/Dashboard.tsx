@@ -7,6 +7,7 @@ import { adminApi } from "@/lib/admin-api";
 const formatDate = (value?: string | null) => value ? new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short" }).format(new Date(value)) : "Date inconnue";
 const money = (value?: number | null) => typeof value === "number" ? `${value.toFixed(2).replace(".", ",")} €` : "—";
 const today = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
+type DashboardData = AdminDashboardResponse & { fromCache?: boolean; cachedAt?: string };
 
 function StatCard({ label, value, detail, icon: Icon, accent, to }: { label: string; value: string; detail: string; icon: typeof Package; accent: string; to: string }) {
   return <Link to={to} className="block rounded-2xl border border-[#dfe6dd] bg-[#fbfcf9] p-5 shadow-[0_8px_24px_rgba(42,67,52,0.03)] transition hover:-translate-y-0.5 hover:border-[#b8d0bb] hover:shadow-[0_14px_30px_rgba(42,67,52,0.08)]"><div className="flex items-start justify-between"><span className={`flex h-10 w-10 items-center justify-center rounded-xl ${accent}`}><Icon size={19} strokeWidth={1.8} /></span><ArrowUpRight size={16} className="text-[#a4b0a7]" /></div><p className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-[#18352b]">{value}</p><p className="mt-1 text-sm font-semibold text-[#53685d]">{label}</p><p className="mt-2 text-xs text-[#98a49c]">{detail}</p></Link>;
@@ -15,7 +16,7 @@ function StatCard({ label, value, detail, icon: Icon, accent, to }: { label: str
 function EmptyState({ label }: { label: string }) { return <div className="flex min-h-[130px] items-center justify-center rounded-xl border border-dashed border-[#d9e2d9] bg-[#fdfdfb] px-5 text-center text-sm text-[#91a098]">{label}</div>; }
 
 export default function Dashboard() {
-  const [data, setData] = useState<AdminDashboardResponse | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
   useEffect(() => { adminApi.dashboard().then(setData).catch((value) => setError(value instanceof Error ? value.message : "Impossible de charger le tableau de bord")); }, []);
   const products = data?.products ?? [];
@@ -28,6 +29,7 @@ export default function Dashboard() {
   return <div className="space-y-8">
     <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="text-sm capitalize text-[#7d8d83]">{today}</p><h2 className="mt-1 font-serif text-3xl text-[#18352b]">Bonjour</h2><p className="mt-2 text-sm text-[#7b8a81]">Voici ce qui se passe dans votre atelier aujourd’hui.</p></div><div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${data?.configured ? "border-[#dbe7dc] bg-[#eff7ef] text-[#3f7551]" : "border-[#e8d8bc] bg-[#fff9ee] text-[#8c6436]"}`}><span className={`h-2 w-2 rounded-full ${data?.configured ? "bg-[#5b9a6b]" : "bg-[#c48752]"}`} /> {data?.configured ? "Données synchronisées" : "Connexion à vérifier"}</div></div>
     {error && <div className="rounded-xl border border-[#edcfc4] bg-[#fff5f1] px-4 py-3 text-sm text-[#a64f3b]">{error}</div>}
+    {data?.fromCache && <div className="rounded-2xl border border-[#e8d8bc] bg-[#fff9ee] px-5 py-4 text-sm text-[#8c6436]">Données du {data.cachedAt ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(data.cachedAt)) : "dernier chargement"} — en attente de connexion.</div>}
     {!data?.configured && <div className="rounded-2xl border border-[#e8d8bc] bg-[#fff9ee] px-5 py-4"><p className="text-sm font-bold text-[#8c6436]">Connexion aux données à finaliser</p><p className="mt-1 text-sm leading-6 text-[#a17e52]">Supabase n’est pas encore configuré sur cet environnement. Les indicateurs restent vides pour éviter toute donnée fictive.</p></div>}
     <div id="analytics" className="grid gap-4 scroll-mt-28 sm:grid-cols-2 xl:grid-cols-4"><StatCard label="Commandes en attente" value={data ? String(pendingOrders) : "—"} detail="Sur les dernières commandes" icon={Clock3} accent="bg-[#f7ead6] text-[#a17745]" to="/commandes" /><StatCard label="Produits en catalogue" value={data ? String(products.length) : "—"} detail="Produits enregistrés" icon={Package} accent="bg-[#e3f0e4] text-[#3f8054]" to="/produits" /><StatCard label="Avis approuvés" value={data ? String(approvedReviews) : "—"} detail="Sur les avis chargés" icon={Star} accent="bg-[#efe4f2] text-[#80608a]" to="/avis" /><StatCard label="Analytics GA4" value={data?.analyticsAvailable ? "Actif" : "—"} detail={data?.analyticsAvailable ? "Données disponibles" : "Statistiques non disponibles"} icon={TrendingUp} accent="bg-[#e3ebf4] text-[#547696]" to="/dashboard#analytics" /></div>
     <div className="grid gap-6 xl:grid-cols-[1.35fr_1fr]">
