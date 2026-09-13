@@ -129,12 +129,10 @@ async function uploadImage(data: string, fileName: string, folder: string) {
   const buffer = Buffer.from(encoded, "base64");
   if (buffer.byteLength > 8 * 1024 * 1024) throw new Error("Image trop volumineuse (8 Mo maximum)");
   const bucket = "atelier-products";
-  const storageHeaders = { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, "Content-Type": "application/json" };
-  const bucketResponse = await fetch(`${process.env.SUPABASE_URL}/storage/v1/bucket`, { method: "POST", headers: storageHeaders, body: JSON.stringify({ id: bucket, name: bucket, public: true }) });
-  if (!bucketResponse.ok && bucketResponse.status !== 409) throw new Error("Le bucket de stockage Supabase est indisponible");
+  const storageHeaders = { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, apikey: process.env.SUPABASE_SERVICE_ROLE_KEY! };
   const extension = fileName.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || contentType.split("/")[1].replace(/[^a-z0-9]/gi, "");
   const path = `${folder}/${crypto.randomUUID()}.${extension}`;
-  const uploadResponse = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, { method: "POST", headers: { Authorization: storageHeaders.Authorization, apikey: storageHeaders.apikey, "Content-Type": contentType, "x-upsert": "false" }, body: buffer });
+  const uploadResponse = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, { method: "POST", headers: { ...storageHeaders, "Content-Type": contentType, "x-upsert": "false" }, body: buffer });
   if (!uploadResponse.ok) throw new Error("Le téléversement de l'image a échoué");
   return `${process.env.SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
 }
