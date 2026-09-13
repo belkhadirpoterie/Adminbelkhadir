@@ -415,7 +415,14 @@ export const handleOrderStatus = requireAdmin(async (req, res) => {
     }
     res.json({ ...(result[0] ?? {}), email });
   } catch (error) {
-    res.status(502).json({ message: error instanceof Error ? error.message : "Erreur Supabase" });
+    const message = error instanceof Error ? error.message : "Erreur Supabase";
+    if (message.includes("orders_status_check")) {
+      res.status(409).json({
+        message: "Les étapes de fabrication ne sont pas encore activées dans Supabase. Appliquez la migration 20260918000001_order_status_cycle.sql avant de choisir ce statut.",
+      });
+      return;
+    }
+    res.status(502).json({ message });
   }
 });
 
